@@ -25,6 +25,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.catalina.session.StandardSession;
+import org.apache.juli.logging.Log;
+import org.apache.juli.logging.LogFactory;
 import org.redisson.api.RMap;
 import org.redisson.api.RTopic;
 import org.redisson.tomcat.RedissonSessionManager.ReadMode;
@@ -48,6 +50,8 @@ public class RedissonSession extends StandardSession {
     public static final Set<String> ATTRS = new HashSet<String>(Arrays.asList(IS_NEW_ATTR, IS_VALID_ATTR, 
             THIS_ACCESSED_TIME_ATTR, MAX_INACTIVE_INTERVAL_ATTR, LAST_ACCESSED_TIME_ATTR, CREATION_TIME_ATTR));
     
+    private final Log log = LogFactory.getLog(RedissonSession.class);
+
     private final RedissonSessionManager redissonManager;
     private final Map<String, Object> attrs;
     private RMap<String, Object> map;
@@ -218,27 +222,32 @@ public class RedissonSession extends StandardSession {
     }
     
     public void save() {
-        Map<String, Object> newMap = new HashMap<String, Object>();
-        newMap.put(CREATION_TIME_ATTR, creationTime);
-        newMap.put(LAST_ACCESSED_TIME_ATTR, lastAccessedTime);
-        newMap.put(THIS_ACCESSED_TIME_ATTR, thisAccessedTime);
-        newMap.put(MAX_INACTIVE_INTERVAL_ATTR, maxInactiveInterval);
-        newMap.put(IS_VALID_ATTR, isValid);
-        newMap.put(IS_NEW_ATTR, isNew);
-        
-        if (attrs != null) {
-            for (Entry<String, Object> entry : attrs.entrySet()) {
-                newMap.put(entry.getKey(), entry.getValue());
+        try {
+            Map<String, Object> newMap = new HashMap<String, Object>();
+            newMap.put(CREATION_TIME_ATTR, creationTime);
+            newMap.put(LAST_ACCESSED_TIME_ATTR, lastAccessedTime);
+            newMap.put(THIS_ACCESSED_TIME_ATTR, thisAccessedTime);
+            newMap.put(MAX_INACTIVE_INTERVAL_ATTR, maxInactiveInterval);
+            newMap.put(IS_VALID_ATTR, isValid);
+            newMap.put(IS_NEW_ATTR, isNew);
+            
+            if (attrs != null) {
+                for (Entry<String, Object> entry : attrs.entrySet()) {
+                    newMap.put(entry.getKey(), entry.getValue());
+                }
             }
-        }
-        
-        map.putAll(newMap);
-        if (readMode == ReadMode.MEMORY) {
-            topic.publish(createPutAllMessage(newMap));
-        }
-        
-        if (maxInactiveInterval >= 0) {
-            map.expire(getMaxInactiveInterval(), TimeUnit.SECONDS);
+            
+            map.putAll(newMap);
+            if (readMode == ReadMode.MEMORY) {
+                topic.publish(createPutAllMessage(newMap));
+            }
+            
+            if (maxInactiveInterval >= 0) {
+                map.expire(getMaxInactiveInterval(), TimeUnit.SECONDS);
+            }
+        } catch (Exception e) {
+            log.error("Failed to save to session", e);
+            e.printStackTrace();
         }
     }
     
